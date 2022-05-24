@@ -1,115 +1,18 @@
 #include <Arduino.h>
-//#include <WiFi.h>
 #include <spi.h>
-
 #include <driver/mcpwm.h>
-#include <SerialCommands.h>
-//#include <testHttp.h>
 #include <BluetoothA2DPSink.h>
-//#include <NoodleSynth.h>
 #include "BluetoothSerial.h"
 #include "thread.h"
-#include <IRremote.hpp>
-
-
-int RECV_PIN = 4;
-
-IRrecv irrecv(RECV_PIN);
-
-decode_results results;
-
+#include "pwm.h"
 
 BluetoothA2DPSink a2dp_sink;
 BluetoothSerial SerialBT;
 
 
 const int led_1 = 5;
-//const int led_2 = 15;
-
-char serial_command_buffer_[32];
-SerialCommands serial_commands_(&Serial, serial_command_buffer_, sizeof(serial_command_buffer_), "\r\n", " ");
-int dead_time = 5;
-
-//This is the default handler, and gets called when no other command matches. 
-void cmd_unrecognized(SerialCommands* sender, const char* cmd)
-{
-  sender->GetSerial()->print("Unrecognized command [");
-  sender->GetSerial()->print(cmd);
-  sender->GetSerial()->println("]");
-}
 
 
-//called for ON command
-void cmd_deadtime_plus(SerialCommands* sender)
-{
-  dead_time++;
-  if(dead_time > 100) dead_time = 100;
-
-  mcpwm_deadtime_enable(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_ACTIVE_HIGH_COMPLIMENT_MODE, dead_time, dead_time);
-  sender->GetSerial()->print("DeadTime [");
-  sender->GetSerial()->print(dead_time);
-  sender->GetSerial()->println("]");
-}
-
-//called for OFF command
-void cmd_deadtime_minus(SerialCommands* sender)
-{
-  dead_time--;
-  if(dead_time < 0) dead_time = 0;
- 
-  mcpwm_deadtime_enable(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_ACTIVE_HIGH_COMPLIMENT_MODE, dead_time, dead_time);
-  sender->GetSerial()->print("DeadTime [");
-  sender->GetSerial()->print(dead_time);
-  sender->GetSerial()->println("]");
-}
-
-bool set_frequency(int frequency)
-{
-	if ((frequency < 0) || (frequency > 1000000))
-	{
-		//invalid frequency
-		return false;
-	}
- 
-  mcpwm_set_frequency(MCPWM_UNIT_0, MCPWM_TIMER_0, frequency);
-}
-
-
-
-void cmd_frequency(SerialCommands* sender)
-{
-	//Note: Every call to Next moves the pointer to next parameter
-
-	char* frequency = sender->Next();
-	if (frequency == NULL)
-	{
-		sender->GetSerial()->println("ERROR NO_frequency");
-		return;
-	}
-	int pwm = atoi(frequency);
-
-	char* frequency_str;
-	while ((frequency_str = sender->Next()) != NULL)
-	{
-		if (set_frequency(pwm))
-		{
-			sender->GetSerial()->print("FREQUENCY_STATUS ");
-			sender->GetSerial()->print(frequency_str);
-			sender->GetSerial()->print(" ");
-			sender->GetSerial()->println(pwm);
-		}
-		else
-		{
-			sender->GetSerial()->print("ERROR ");
-			sender->GetSerial()->println(frequency_str);
-		}
-	}
-}
-
-
-SerialCommand cmd_deadtime_plus_("up", cmd_deadtime_plus);
-SerialCommand cmd_deadtime_minus_("dn", cmd_deadtime_minus);
-SerialCommand cmd_frequency_("freq", cmd_frequency);
 
 
 void show_task_info(void);
@@ -121,16 +24,18 @@ TaskHandle_t Task2;
 
 void Task1code( void * parameter ){
     uint32_t val = *((volatile uint32_t *) (0x3FF5E000));
-    *((volatile uint32_t *) (0x3FF5E000)) &= 0x0;
+    //*((volatile uint32_t *) (0x3FF5E000)) &= 0x0;
     Serial.print("Task1 is running on core ");
     Serial.println(xPortGetCoreID());
 
   for(;;){
     //digitalWrite(led_1, HIGH);
-      val = *((volatile uint32_t *) (0x3FF5E000));
-      Serial.print("t -> 0x");
-      Serial.print(val, HEX);
-      Serial.println();
+    //  val = *((volatile uint32_t *) (0x3FF5E000));
+      //Serial.print("t -> 0x");
+      //Serial.print(val, HEX);
+      //Serial.println();
+      //Serial.printf("test-> 0x%02x \n", val);
+    //  printf("test-> 0x%x\n", val);
     //digitalWrite(5, HIGH);
     delay(500);
     //digitalWrite(5, LOW);
@@ -188,37 +93,12 @@ void audio_state_changed(esp_a2d_audio_state_t state, void *ptr){
 }
 
 void setup() {
-  Serial.begin(115200);
+  //Serial.begin(115200);
   //pinMode(5, OUTPUT);
   //pinMode(led_2, OUTPUT);
-  mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, MOSFET1);
-  mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0B, MOSFET2);
-  mcpwm_pin_config_t pin_config;
-  pin_config.mcpwm0a_out_num = MOSFET1;
-  pin_config.mcpwm0b_out_num = MOSFET2;
-  //pin_config.mcpwm_sync0_in_num  = GPIO_SYNC0_IN;
-  mcpwm_config_t pwm_config;
-  pwm_config.frequency = 250000;    //frequency = 160 / 2 MHz
-  pwm_config.cmpr_a = 0;       //duty cycle of PWMxA = 60.0%
-  pwm_config.cmpr_b = 0;       //duty cycle of PWMxA = 60.0%
-  pwm_config.counter_mode = MCPWM_UP_COUNTER;
-  pwm_config.duty_mode = MCPWM_DUTY_MODE_0;
-
-  mcpwm_set_pin(MCPWM_UNIT_0, &pin_config);
-  mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &pwm_config);   //Configure PWM0A & PWM0B with above settings
-  mcpwm_set_duty_type(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, MCPWM_DUTY_MODE_0);
-  mcpwm_set_duty_type(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, MCPWM_DUTY_MODE_0);
-  mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, 50);
-  mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, 50);
-
-  mcpwm_deadtime_enable(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_ACTIVE_HIGH_COMPLIMENT_MODE, 5, 5);
-  //mcpwm_deadtime_enable(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_ACTIVE_RED_FED_FROM_PWMXB, 5, 5);
-
-  mcpwm_set_frequency(MCPWM_UNIT_0, MCPWM_TIMER_0, 250000);
-  mcpwm_start(MCPWM_UNIT_0, MCPWM_TIMER_0);
-  //mcpwm_sync_enable(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_SELECT_SYNC0, 0);
 
 
+  pwm_init();
 
   xTaskCreatePinnedToCore(Task1code,"Task1",2000,NULL,1,&Task1,0);
   xTaskCreatePinnedToCore(Task2code,"Task2",2000,NULL,15,&Task2,1);
@@ -279,11 +159,6 @@ static const i2s_pin_config_t i2s_pin_config  = {
   SerialBT.begin("auzoa70"); //Bluetooth device 이름
 
 
-  serial_commands_.SetDefaultHandler(cmd_unrecognized);
-  serial_commands_.AddCommand(&cmd_deadtime_plus_);
-  serial_commands_.AddCommand(&cmd_deadtime_minus_);
-  serial_commands_.AddCommand(&cmd_frequency_);
-
   log_d("Total heap: %d", ESP.getHeapSize());
   log_d("Free heap: %d", ESP.getFreeHeap());
   log_d("Total PSRAM: %d", ESP.getPsramSize());
@@ -320,20 +195,20 @@ static const i2s_pin_config_t i2s_pin_config  = {
 //  ledcSetup (1,1E5,12);
 //  ledcAttachPin(4,1);
 //ledcWriteNote(1, melody_note[1], 4);
-irrecv.enableIRIn(); // Start the receiver
+//irrecv.enableIRIn(); // Start the receiver
 
 
-TaskInit();
-  Serial.println("Ready!");
+  TaskInit();
+
+  //Serial.println("Ready!");
 }
 
 bool is_active = true;
    
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  //serial_commands_.ReadSerial();
-    //delay(50);
+  delay(50);
+/*
   if (Serial.available()) {
 
     SerialBT.write(Serial.read());
@@ -345,16 +220,10 @@ void loop() {
     Serial.write(SerialBT.read());
 
   }
-
   if (irrecv.decode(&results))
   {
     Serial.println(results.value, HEX);
     irrecv.resume();
   }
-
-//  instrument.update();  //but its important to recognize that this library depends
-//  instrument2.update();
-//  instrument3.update();
-//  instrument4.update();
-
+*/
 }
