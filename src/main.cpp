@@ -1,229 +1,158 @@
 #include <Arduino.h>
-#include <spi.h>
-#include <driver/mcpwm.h>
-#include <BluetoothA2DPSink.h>
-#include "BluetoothSerial.h"
-#include "thread.h"
-#include "pwm.h"
+#include <WiFi.h>
+#include "BasicOTA.hpp"
+#include <cli.h>
+#include <pid.h>
+#include <pwm.h>
+#include <led.h>
+#include <vco.h>
 
-BluetoothA2DPSink a2dp_sink;
-BluetoothSerial SerialBT;
+const char* ssid = "aomr"; //Replace with your own SSID
+const char* password = "aomr0104"; //Replace with your own password
+
+BasicOTA OTA;
+
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7735.h> // Hardware-specific library for ST7735
+#include <XPT2046_Touchscreen.h>
+#include <SPI.h>
+
+#define TFT_CS          14
+#define TFT_RST         33   // Or set to -1 and connect to Arduino RESET pin
+#define TFT_DC          27
+#define CS_PIN          12
+
+XPT2046_Touchscreen ts(CS_PIN);
+#define TIRQ_PIN  2
 
 
-const int led_1 = 5;
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+
+float p = 3.1415926;
 
 
 
 
-void show_task_info(void);
 
 
 
-TaskHandle_t Task1;
-TaskHandle_t Task2;
 
-void Task1code( void * parameter ){
-    uint32_t val = *((volatile uint32_t *) (0x3FF5E000));
-    //*((volatile uint32_t *) (0x3FF5E000)) &= 0x0;
-    Serial.print("Task1 is running on core ");
-    Serial.println(xPortGetCoreID());
 
-  for(;;){
-    //digitalWrite(led_1, HIGH);
-    //  val = *((volatile uint32_t *) (0x3FF5E000));
-      //Serial.print("t -> 0x");
-      //Serial.print(val, HEX);
-      //Serial.println();
-      //Serial.printf("test-> 0x%02x \n", val);
-    //  printf("test-> 0x%x\n", val);
-    //digitalWrite(5, HIGH);
-    delay(500);
-    //digitalWrite(5, LOW);
-    delay(500);
-  }
+
+
+void mediabuttons() {
+  // play
+  tft.fillScreen(ST77XX_BLACK);
+  tft.fillRoundRect(25, 10, 78, 60, 8, ST77XX_WHITE);
+  tft.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_RED);
+  delay(500);
+  // pause
+  tft.fillRoundRect(25, 90, 78, 60, 8, ST77XX_WHITE);
+  tft.fillRoundRect(39, 98, 20, 45, 5, ST77XX_GREEN);
+  tft.fillRoundRect(69, 98, 20, 45, 5, ST77XX_GREEN);
+  delay(500);
+  // play color
+  tft.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_BLUE);
+  delay(50);
+  // pause color
+  tft.fillRoundRect(39, 98, 20, 45, 5, ST77XX_RED);
+  tft.fillRoundRect(69, 98, 20, 45, 5, ST77XX_RED);
+  // play color
+  tft.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_GREEN);
 }
 
-void Task2code( void * parameter ){
-  Serial.print("Task2 is running on core ");
-  Serial.println(xPortGetCoreID());
-  pinMode(led_1, OUTPUT);
-
-  for(;;){
-    //  serial_commands_.ReadSerial();
-    digitalWrite(led_1, HIGH);
-    delay(1000);
-    digitalWrite(led_1, LOW);
-    delay(1000);
-  }
+void tftPrintTest() {
+  tft.setTextWrap(false);
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setCursor(0, 30);
+  tft.setTextColor(ST77XX_RED);
+  tft.setTextSize(1);
+  tft.println("Hello World!");
+  tft.setTextColor(ST77XX_YELLOW);
+  tft.setTextSize(2);
+  tft.println("Hello World!");
+  tft.setTextColor(ST77XX_GREEN);
+  tft.setTextSize(3);
+  tft.println("Hello World!");
+  tft.setTextColor(ST77XX_BLUE);
+  tft.setTextSize(4);
+  tft.print(1234.567);
+  delay(1500);
+  tft.setCursor(0, 0);
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(0);
+  tft.println("Hello World!");
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_GREEN);
+  tft.print(p, 6);
+  tft.println(" Want pi?");
+  tft.println(" ");
+  tft.print(8675309, HEX); // print 8,675,309 out in HEX!
+  tft.println(" Print HEX!");
+  tft.println(" ");
+  tft.setTextColor(ST77XX_WHITE);
+  tft.println("Sketch has been");
+  tft.println("running for: ");
+  tft.setTextColor(ST77XX_MAGENTA);
+  tft.print(millis() / 1000);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.print(" seconds.");
 }
 
-
-void logMemory() {
-  log_d("Used PSRAM: %d", ESP.getPsramSize() - ESP.getFreePsram());
+void tftAmpare() {
+  tft.setTextWrap(false);
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setCursor(0, 30);
+  tft.setTextColor(ST77XX_YELLOW);
+  tft.setTextSize(4);
+  tft.println("100 mA");
 }
 
-#define GPIO_SYNC0_IN 23       //pin for the external interrupt (Input with Pullup)
-#define MOSFET1 15          //pin to trigger the MOSFET (Output) pin15
-#define MOSFET2 2          //pin to trigger the MOSFET (Output) pin2
-
-
-
-
-/*
-synthEngine mixer(20E3);
-const char song[] PROGMEM = {"MissionImp:d=16,o=6,b=150:32d,32d#,32d,32d#,32d,32d#,32d,32d#,32d,32d,32d#,32e,32f,32f#,32g,16g,8p,16g,8p,16a#,16p,16c1,16p,16g,8p,16g,8p,16f,16p,16f#,16p,16g,8p,16g,8p,16a#,16p,16c1,16p,16g,8p,16g,8p,16f,16p,16f#,16p,16a#,16g,2d,32p,16a#,16g,2c#,32p,16a#,16g,2c,16a#-1,8c,2p,32p,16a#-1,16g-1,2f#,32p,16a#-1,16g-1,2f,32p,16a#-1,16g-1,2e,16d#,8d"};
-const char song2[] PROGMEM = {":d=16,o=4,b=150:8d,16d#,2e,16g-1,16a#-1,32p,2f,16g-1,16a#-1,32p,2f#,16g-1,16a#-1,32p,2p,8c,16a#-1,2c,16g,16a#,32p,2c#,16g,16a#,32p,2d,16g,16a#,16p,16f#,16p,16f,8p,16g,8p,16g,16p,16c1,16p,16a#,8p,16g,8p,16g,16p,16f#,16p,16f,8p,16g,8p,16g,16p,16c1,16p,16a#,8p,16g,8p,16g,32g,32f#,32f,32e,32d#,32d,32d,32d#,32d,32d#,32d,32d#,32d,32d#,32d"};
-const char song3[] PROGMEM = ":o=6,d=2:16a,16b,8a,4b";
-const char song4[] PROGMEM = ":o=5,d=2:32g,32a,32b,32c";
-MusicWithoutDelay instrument(song);          //d=4 means that every note without a number in front of the letter is assumed to be a quarter note.
-MusicWithoutDelay instrument2(song2);
-MusicWithoutDelay instrument3(song3);
-MusicWithoutDelay instrument4(song4);
-*/
-
-
-// for esp_a2d_connection_state_t see https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/esp_a2dp.html#_CPPv426esp_a2d_connection_state_t
-void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
-  Serial.println(a2dp_sink.to_str(state));
-}
-
-// for esp_a2d_audio_state_t see https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/esp_a2dp.html#_CPPv421esp_a2d_audio_state_t
-void audio_state_changed(esp_a2d_audio_state_t state, void *ptr){
-  Serial.println(a2dp_sink.to_str(state));
-}
 
 void setup() {
-  //Serial.begin(115200);
-  //pinMode(5, OUTPUT);
-  //pinMode(led_2, OUTPUT);
+    // Use this initializer if using a 1.8" TFT screen:
+    tft.initR(INITR_GREENTAB);      // Init ST7735S chip, black tab
+    //tft.initB();
+    tft.setRotation(1);
+    
+    ts.begin();
+    ts.setRotation(1);
+    printf("Initialized\n");
 
+    //tft.fillScreen(ST77XX_WHITE);
 
-  pwm_init();
+    tftAmpare();
 
-  xTaskCreatePinnedToCore(Task1code,"Task1",2000,NULL,1,&Task1,0);
-  xTaskCreatePinnedToCore(Task2code,"Task2",2000,NULL,15,&Task2,1);
+    //Serial.begin(115200);
+    printf("Startup\n");
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+        delay(10);printf(".");
+        //("Connection Failed! Rebooting..."); delay(5000); ESP.restart();
+    }
 
- // init_HttpServer();
- /*
-    static const i2s_config_t i2s_config = {
-        .mode = (i2s_mode_t) (I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_DAC_BUILT_IN),
-        .sample_rate = 44100, // corrected by info from bluetooth
-        .bits_per_sample = (i2s_bits_per_sample_t) 16, // the DAC module will only take the 8bits from MSB/
-        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-        .communication_format = (i2s_comm_format_t)I2S_COMM_FORMAT_STAND_MSB,
-        .intr_alloc_flags = 0, // default interrupt priority
-        .dma_buf_count = 8,
-        .dma_buf_len = 64,
-        .use_apll = false
-    };
+    OTA.begin(); // Setup settings
 
-    a2dp_sink.set_i2s_config(i2s_config);
-    a2dp_sink.start("MyMusic");
-*/
+    printf("Ready\n");
+    printf("\nConnected to %s IP address: %s \n", ssid, WiFi.localIP().toString());
 
-  const i2s_config_t i2s_config = {
-      .mode = (i2s_mode_t) (I2S_MODE_MASTER | I2S_MODE_TX),
-      .sample_rate = 44100, // updated automatically by A2DP
-      .bits_per_sample = (i2s_bits_per_sample_t)16,
-      .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-      .communication_format = (i2s_comm_format_t) (I2S_COMM_FORMAT_STAND_I2S),
-      .intr_alloc_flags = 0, // default interrupt priority
-      .dma_buf_count = 8,
-      .dma_buf_len = 64,
-      .use_apll = false,
-      .tx_desc_auto_clear = true // avoiding noise in case of data unavailability
-};
-
-/* i2s pinout
-static const i2s_pin_config_t i2s_pin_config  = {
-.bck_io_num = 26,
-.ws_io_num = 25,
-.data_out_num = 27,
-.data_in_num = -1
-};
-*/
-// now configure i2s with constructed pinout and config
-//i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
-//i2s_set_pin(I2S_NUM_0, &i2s_pin_config);
-
-
-	//enable MCLK on GPIO0
-	REG_WRITE(PIN_CTRL, 0xFF0); 
-	PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
-  a2dp_sink.set_on_connection_state_changed(connection_state_changed);
-  a2dp_sink.set_on_audio_state_changed(audio_state_changed);
-
-  a2dp_sink.set_i2s_config(i2s_config);  
-  a2dp_sink.start("InternalDAC");  
-
-  SerialBT.begin("auzoa70"); //Bluetooth device 이름
-
-
-  log_d("Total heap: %d", ESP.getHeapSize());
-  log_d("Free heap: %d", ESP.getFreeHeap());
-  log_d("Total PSRAM: %d", ESP.getPsramSize());
-  log_d("Free PSRAM: %d", ESP.getFreePsram());
-
-  logMemory();
-  byte* psdRamBuffer = (byte*)ps_malloc(500000);
-  logMemory();
-  log_d("Free PSRAM: %d", ESP.getFreePsram());
-  free(psdRamBuffer);
-  log_d("Free PSRAM: %d", ESP.getFreePsram());
-  logMemory();
-  uint8_t *tt;
-  tt = (uint8_t *)ps_malloc(100);
-  logMemory();
-
-
-  // put your setup code here, to run once:
-  //instrument.begin(CHB, TRIANGLE, ENVELOPE0, 0);
-  //instrument2.begin(TRIANGLE, ENVELOPE0, 0);
-  //instrument3.begin(TRIANGLE, ENVELOPE0, 0);
-  //instrument4.begin(TRIANGLE, ENVELOPE0, 0);
-//    instrument.begin(CHB, TRIANGLE, ENVELOPE0, 0);
-//  instrument2.begin(TRIANGLE, ENVELOPE0, 0);
-
-//  instrument.overrideSustain(true); //let's override sustain and make some cool effects :)
-//  instrument2.overrideSustain(true);
-//  instrument2.reverse(!instrument2.isBackwards());  //plays the song backwards(since it was already backwards to begin with, this function reassures you that the song will sound as if it was playing forwards)
-
-//  unsigned long t = instrument.getTotalTime();  //spits out total time in milliseconds
-//  Serial.println(F("Type '1','2','3', or '4' to mute the corresponding instrument."));
-
-//  Serial.print("Total Time: "); Serial.println(t / 1E3);
-//  ledcSetup (1,1E5,12);
-//  ledcAttachPin(4,1);
-//ledcWriteNote(1, melody_note[1], 4);
-//irrecv.enableIRIn(); // Start the receiver
-
-
-  TaskInit();
-
-  //Serial.println("Ready!");
+    cli_init();
+    register_pid_console_command();
+    //register_pwm_console_command();
+    //register_led_console_command();
+    register_vco_console_command();
+    //pwm_init();
+    //led_init();
+    vco_init();
+    rotary_init();
 }
-
-bool is_active = true;
-   
 
 void loop() {
-  delay(50);
-/*
-  if (Serial.available()) {
-
-    SerialBT.write(Serial.read());
-
-  }
-
-  if (SerialBT.available()) {
-
-    Serial.write(SerialBT.read());
-
-  }
-  if (irrecv.decode(&results))
-  {
-    Serial.println(results.value, HEX);
-    irrecv.resume();
-  }
-*/
+    OTA.handle();
+    rotary_loop();  
+    delay(50);
 }
+
+

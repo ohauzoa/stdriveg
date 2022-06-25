@@ -6,8 +6,7 @@ extern "C" {
 #endif
 
 
-void pwm_init(void);
-void register_pwm_console_command(void);
+void cli_init(void);
 
 #ifdef __cplusplus
 }
