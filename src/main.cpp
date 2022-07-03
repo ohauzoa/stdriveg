@@ -16,7 +16,8 @@ BasicOTA OTA;
 #include <Adafruit_ST7735.h> // Hardware-specific library for ST7735
 #include <XPT2046_Touchscreen.h>
 #include <SPI.h>
-
+#include <stdio.h>
+#include "TFT_eSPI.h"
 #define TFT_CS          14
 #define TFT_RST         33   // Or set to -1 and connect to Arduino RESET pin
 #define TFT_DC          27
@@ -26,19 +27,23 @@ XPT2046_Touchscreen ts(CS_PIN);
 #define TIRQ_PIN  2
 
 
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+//Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 float p = 3.1415926;
 
+int mode = 0;
+
+
+//TFT_eSPI tft = TFT_eSPI();
+
+#include "my_lv_ports.h"
+#include <TFT_eSPI.h>
+#include <lv_demo.h>
+#include <lvgl.h>
 
 
 
-
-
-
-
-
-
+/*
 
 void mediabuttons() {
   // play
@@ -103,14 +108,34 @@ void tftPrintTest() {
 void tftAmpare() {
   tft.setTextWrap(false);
   tft.fillScreen(ST77XX_BLACK);
-  tft.setCursor(0, 30);
-  tft.setTextColor(ST77XX_YELLOW);
+  tft.setCursor(0, 40);
+  tft.setTextColor(ST77XX_MAGENTA);
   tft.setTextSize(4);
   tft.println("100 mA");
 }
+char str[40];
 
+void tftOutput(int val)
+{
+  tft.setTextWrap(false);
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setCursor(25, 50);
+  tft.setTextColor(ST77XX_MAGENTA);
+  tft.setTextSize(4);
+  sprintf(str,"%d.%d A", val/10, val%10);
+  tft.print(str);
+  //tft.print(val%10);
+  //tft.println("A" + val + "!!");
+}
 
-void setup() {
+void dacout(int val)
+{
+  // dac 0 -> 0.078V,   255= 3.3V 128=1.65V
+  dacWrite(25, val);
+  delay(10);
+}
+
+void setup1() {
     // Use this initializer if using a 1.8" TFT screen:
     tft.initR(INITR_GREENTAB);      // Init ST7735S chip, black tab
     //tft.initB();
@@ -122,7 +147,7 @@ void setup() {
 
     //tft.fillScreen(ST77XX_WHITE);
 
-    tftAmpare();
+    //tftAmpare();
 
     //Serial.begin(115200);
     printf("Startup\n");
@@ -139,20 +164,62 @@ void setup() {
     printf("\nConnected to %s IP address: %s \n", ssid, WiFi.localIP().toString());
 
     cli_init();
-    register_pid_console_command();
+    //register_pid_console_command();
     //register_pwm_console_command();
     //register_led_console_command();
-    register_vco_console_command();
+    //register_vco_console_command();
     //pwm_init();
     //led_init();
-    vco_init();
+    //vco_init();
     rotary_init();
+    tftOutput(0);
+    dacout(0);
 }
 
-void loop() {
+void loop1() {
     OTA.handle();
     rotary_loop();  
     delay(50);
 }
+*/
 
+void setup() {
+  Serial.begin(115200); /* prepare for possible serial debug */
+  Wire.begin(ESP32_I2C_SDA, ESP32_I2C_SCL);
 
+  String LVGL_Arduino = "Hello Arduino! ";
+  LVGL_Arduino += String('V') + lv_version_major() + "." + lv_version_minor() +
+                  "." + lv_version_patch();
+
+  Serial.println(LVGL_Arduino);
+  Serial.println("I am LVGL_Arduino");
+
+  lv_init();
+  my_disp_init();
+
+#if 0
+  /* Create simple label */
+  lv_obj_t *label = lv_label_create(lv_scr_act());
+  lv_label_set_text(label, LVGL_Arduino.c_str());
+  lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+#else
+  /* Try an example from the lv_examples Arduino library
+     make sure to include it as written above.
+  lv_example_btn_1();
+ */
+
+  // uncomment one of these demos
+  // lv_demo_widgets(); // OK
+  lv_demo_benchmark(); // OK
+  // lv_demo_keypad_encoder();     // works, but I haven't an encoder
+  // lv_demo_music();              // NOK
+  // lv_demo_printer();
+  // lv_demo_stress();             // seems to be OK
+#endif
+  Serial.println("Setup done");
+}
+
+void loop() {
+  lv_timer_handler(); /* let the GUI do its work */
+  delay(5);
+}

@@ -12,7 +12,8 @@
         "target/esp32.cfg"
     ],
     "files.associations": {
-        "bitset": "cpp"
+        "bitset": "cpp",
+        "sstream": "cpp"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }
